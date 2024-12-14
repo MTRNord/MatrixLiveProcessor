@@ -4,8 +4,8 @@ from pathlib import Path
 import webvtt
 from ffmpeg import FFmpeg
 from ffmpeg_normalize import FFmpegNormalize
-from langchain_community.chat_models import ChatOllama
 from langchain_core.prompts import PromptTemplate
+from langchain_ollama import ChatOllama
 from loguru import logger
 from pywhispercpp.model import Model, Segment
 from pywhispercpp.utils import to_timestamp
@@ -16,7 +16,12 @@ Please extract the following information from the episode transcript and format 
 Transcript:
 {transcript}
 
-Please ensure to only output valid Markdown content.
+The show is called "Matrix Live" which is a weekly podcast episode by the Matrix.org team.
+
+If you are referring to the Host please refer to it as "I" if it refers directly to the speaker.
+This means write "I plan to do this" instead of "The host plans to do this".
+
+Please ensure to only output valid Markdown content. Do not add any comments to the output. Do only output the final markdown.
 """
 
 
@@ -85,10 +90,9 @@ def escape_curly_braces(text: str) -> str:
 
 
 def read_vtt_file(vtt_file: Path) -> str:
-    logger.info("Reading transcript from file:", vtt_file)
+    logger.info(f"Reading transcript from file: {str(vtt_file)}")
     vtt = webvtt.read(str(vtt_file))
     transcript = " ".join([caption.text for caption in vtt])
-    logger.info("Transcript length:", len(transcript))
     return transcript
 
 
@@ -98,15 +102,14 @@ def create_show_notes(vtt_file: Path, show_notes_file: Path) -> None:
 
     # Create promt using PromptTemplate by combining the transcript and above defined prompt template
     prompt = PromptTemplate(
-        initial_prompt_template,
+        template=initial_prompt_template,
         input_variables=["transcript"],
     )
 
     query = prompt.format(transcript=transcript)
-    logger.info("Prompt query:", query)
 
     # Initialize the LLM model
-    local_llm = "phi3"
+    local_llm = "llama3.1"
 
     logger.info(f"Initializing LLM for extraction: {local_llm}")
     model = ChatOllama(model=local_llm, temperature=0.1)
@@ -114,7 +117,6 @@ def create_show_notes(vtt_file: Path, show_notes_file: Path) -> None:
     # Invoke the LLM to get the response
     response = model.invoke(query)
     raw_content = response.content
-    logger.info("Initial Response:", raw_content)
 
     # Write the show notes to the file
     with open(show_notes_file, "w") as file:
@@ -156,8 +158,10 @@ def main(
     vtt_file: Path,
     show_notes_file: Path,
     use_whisper: bool,
-    model_name: str = None,
-    language: str = None,
+    burn_subs: bool,
+    show_notes: bool,
+    model_name: str,
+    language: str,
 ) -> None:
     # Normalize the audio
     logger.info("Normalizing audio...")
@@ -172,13 +176,15 @@ def main(
         logger.info("Generating subtitles...")
         generate_subtitles(mp3, vtt_file, model_name, language)
         logger.info("Subtitles generated...")
-        logger.info("Add subtitles to video file...")
-        ass_file = output_file.with_suffix(".ass")
-        convert_vtt_to_ass(vtt_file, ass_file)
-        overlay_subtitles(output_file, ass_file, output_file)
-        logger.info("Added subtitles to video file...")
-        logger.info("Creating show notes...")
-        create_show_notes(vtt_file, show_notes_file)
+        if burn_subs:
+            logger.info("Add subtitles to video file...")
+            ass_file = output_file.with_suffix(".ass")
+            convert_vtt_to_ass(vtt_file, ass_file)
+            overlay_subtitles(output_file, ass_file, output_file)
+            logger.info("Added subtitles to video file...")
+        if show_notes:
+            logger.info("Creating show notes...")
+            create_show_notes(vtt_file, show_notes_file)
 
 
 # Entry point of the script
@@ -188,6 +194,11 @@ if __name__ == "__main__":
     parser.add_argument("output_file", type=Path, help="Path to the output file")
     parser.add_argument(
         "--use-whisper", action="store_true", help="Enable Whisper subtitle generation"
+    )
+    parser.add_argument(
+        "--burn-subtitles",
+        action="store_true",
+        help="Burn subtitles into the video itself",
     )
     parser.add_argument(
         "--model-name",
@@ -207,6 +218,12 @@ if __name__ == "__main__":
     # Force flag for overwriting the output file
     parser.add_argument(
         "--force", action="store_true", help="Force overwrite the output files"
+    )
+    # Show notes flag
+    parser.add_argument(
+        "--show-notes",
+        action="store_true",
+        help="Generate show notes from the transcript. Requires an ollama instance.",
     )
 
     args = parser.parse_args()
@@ -235,6 +252,8 @@ if __name__ == "__main__":
         args.output_file.with_suffix(".vtt"),
         args.output_file.with_suffix(".md"),
         args.use_whisper,
+        args.burn_subtitles,
+        args.show_notes,
         args.model_name,
         args.language,
     )
