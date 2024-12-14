@@ -1,0 +1,8 @@
+ffmpeg-normalize
+pywhispercpp
+python-ffmpeg
+webvtt-py
+langchain_core
+langchain_community
+ollama
+loguru
