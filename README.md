@@ -37,7 +37,6 @@ python matrix_live_processor.py ./input.mp4 ./output.mp4 --use-whisper --model-n
 - `--model-name`: The whisper model to use (default: `medium`). Check whispercpp for available models.
 - `--language`: The language to use for whisper subtitle generation (default: `en`). Check whispercpp for available
   languages.
-- `--speaker`: The speaker to use for whisper subtitle generation. Should be the name of the speaker in the video.
 - `--force`: Force overwrite of the output file if it already exists.
 
 ## Note
